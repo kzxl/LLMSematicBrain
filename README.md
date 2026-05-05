@@ -8,20 +8,20 @@ Local RAG knowledge base với Vector Search — chạy hoàn toàn offline, đ�
 
 ```mermaid
 graph TD
-    User([Lập trình viên]) -->|Code / Chat| IDE(Cursor / VS Code / Cline)
-    IDE -->|Gửi request API| Proxy[OpenAI Proxy :3458]
+    User(["Lập trình viên"]) -->|"Code / Chat"| IDE("Cursor / VS Code / Cline")
+    IDE -->|"Gửi request API"| Proxy["OpenAI Proxy :3458"]
     
     subgraph "SemanticBrain (Long-Term Memory)"
-    Proxy -->|1. Trích xuất Context| RAG(RAG Engine :3457)
-    RAG -->|Tìm kiếm| DB[(PostgreSQL + pgvector)]
-    RAG -->|2. Tiêm RAG & Khuôn Agent| Proxy
+    Proxy -->|"1. Trích xuất Context"| RAG("RAG Engine :3457")
+    RAG -->|"Tìm kiếm"| DB[("PostgreSQL + pgvector")]
+    RAG -->|"2. Tiêm RAG và Khuôn Agent"| Proxy
     end
 
-    Proxy -->|3. Forward Request| Ollama(Local LLM / Qwen 3B, Llama3)
-    Ollama -.->|Stream trả lời| Proxy
+    Proxy -->|"3. Forward Request"| Ollama("Local LLM / Qwen 3B, Llama3")
+    Ollama -.->|"Stream trả lời"| Proxy
     
-    Proxy -->|4. Auto-Harvest (Lọc & Học)| DB
-    Proxy -.->|Stream trả lời| IDE
+    Proxy -->|"4. Auto-Harvest Lọc và Học"| DB
+    Proxy -.->|"Stream trả lời"| IDE
 ```
 
 ## Stack
