@@ -1,0 +1,73 @@
+[
+  {
+    "intent": "Refactor feature to UA conformance",
+    "category": "refactor",
+    "target_pattern": "Features/{Domain}/{Feature}",
+    "steps": [
+      {"order": 1, "action": "list_dir", "params": {"path": "{FeaturePath}"}, "note": "Explore folder structure"},
+      {"order": 2, "action": "view_file", "params": {"pattern": "*.cs"}, "note": "Read core files (Controller, Service, View)"},
+      {"order": 3, "action": "skill:ua-refactor", "params": {"FeaturePath": "{FeaturePath}", "Branch": "{Branch}"}, "note": "Run UA refactor workflow"},
+      {"order": 4, "action": "run_command", "params": {"cmd": "MSBuild"}, "note": "Build and verify"},
+      {"order": 5, "action": "run_command", "params": {"cmd": "git commit"}, "note": "Commit changes"}
+    ],
+    "skills_used": ["ua-refactor", "compile_solution"],
+    "tools_used": ["list_dir", "view_file", "run_command", "replace_file_content"]
+  },
+  {
+    "intent": "Create new service and controller for feature",
+    "category": "create",
+    "target_pattern": "Features/{Domain}/{Feature}",
+    "steps": [
+      {"order": 1, "action": "skill:create_service", "params": {"Feature": "{Feature}"}, "note": "Create IService + Service implementation"},
+      {"order": 2, "action": "skill:create_controller", "params": {"Feature": "{Feature}"}, "note": "Create Controller (delegate to service)"},
+      {"order": 3, "action": "skill:generate_constants", "params": {"Feature": "{Feature}"}, "note": "Create Constants file"},
+      {"order": 4, "action": "edit_csproj", "params": {}, "note": "Add new files to .csproj"},
+      {"order": 5, "action": "run_command", "params": {"cmd": "MSBuild"}, "note": "Build and verify"},
+      {"order": 6, "action": "run_command", "params": {"cmd": "git commit"}, "note": "Commit changes"}
+    ],
+    "skills_used": ["create_service", "create_controller", "generate_constants", "compile_solution"],
+    "tools_used": ["write_to_file", "replace_file_content", "run_command"]
+  },
+  {
+    "intent": "Debug and fix error in feature",
+    "category": "debug",
+    "target_pattern": "Features/{Domain}/{Feature}",
+    "steps": [
+      {"order": 1, "action": "grep_search", "params": {"query": "{ErrorKeyword}"}, "note": "Search for error location in code"},
+      {"order": 2, "action": "view_file", "params": {}, "note": "Read code around error"},
+      {"order": 3, "action": "trace_flow", "params": {"direction": "View->Controller->Service->DB"}, "note": "Trace backwards from UI to DB"},
+      {"order": 4, "action": "replace_file_content", "params": {}, "note": "Apply fix"},
+      {"order": 5, "action": "run_command", "params": {"cmd": "MSBuild"}, "note": "Build and verify"},
+      {"order": 6, "action": "run_command", "params": {"cmd": "git commit"}, "note": "Commit fix"}
+    ],
+    "skills_used": ["compile_solution"],
+    "tools_used": ["grep_search", "view_file", "replace_file_content", "run_command"]
+  },
+  {
+    "intent": "Audit UA conformance for feature module",
+    "category": "audit",
+    "target_pattern": "Features/{Domain}/{Feature}",
+    "steps": [
+      {"order": 1, "action": "list_dir", "params": {"path": "{FeaturePath}"}, "note": "Explore folder structure (View, Controller, Service, DTOs)"},
+      {"order": 2, "action": "view_file", "params": {"file": "universe-plugin.md"}, "note": "Load UA architecture reference"},
+      {"order": 3, "action": "view_file", "params": {"pattern": "Controller/*.cs, Service/*.cs, View/*.cs"}, "note": "Scan code layers: View=controller-only, Controller=delegate, Service=IService"},
+      {"order": 4, "action": "output_table", "params": {"columns": ["Component", "Pass/Fail", "Evidence"]}, "note": "Output UA conformance scorecard + Action Items"}
+    ],
+    "skills_used": ["audit-ua", "audit_code_quality"],
+    "tools_used": ["list_dir", "view_file"]
+  },
+  {
+    "intent": "Integrate file attachment component into form",
+    "category": "integrate",
+    "target_pattern": "Features/{Domain}/{Feature}/View",
+    "steps": [
+      {"order": 1, "action": "workflow:use-sys-attachment", "params": {}, "note": "Read integration guide"},
+      {"order": 2, "action": "view_file", "params": {"path": "frmXxx.Designer.cs"}, "note": "Read current Designer layout"},
+      {"order": 3, "action": "write_to_file", "params": {}, "note": "Add FileAttachmentEdit to form"},
+      {"order": 4, "action": "replace_file_content", "params": {}, "note": "Wire LoadAttachmentData + SaveChangesAsync"},
+      {"order": 5, "action": "run_command", "params": {"cmd": "MSBuild"}, "note": "Build and verify"}
+    ],
+    "skills_used": ["use-sys-attachment"],
+    "tools_used": ["view_file", "write_to_file", "replace_file_content", "run_command"]
+  }
+]

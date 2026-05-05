@@ -1,0 +1,29 @@
+{
+  "name": "semantic-brain",
+  "version": "1.0.0",
+  "description": "Semantic Brain — Local RAG Knowledge Base with Vector Search (PostgreSQL + Ollama + BGE-M3)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "proxy": "node openai-proxy.js",
+    "find-qa": "node tools/find-qa.js",
+    "find-qa-context": "node tools/find-qa-context.js",
+    "find-qa-deep": "node tools/find-qa-deep.js",
+    "find-skill": "node tools/find-skill.js",
+    "find-recipe": "node tools/find-recipe.js",
+    "save-qa": "node tools/save-qa.js",
+    "post-task": "node tools/post-task.js",
+    "health": "node tools/qa-health.js",
+    "dashboard": "node tools/dashboard.js",
+    "stats": "node tools/stats.js",
+    "setup": "node maintenance/setup.js",
+    "export": "node maintenance/export.js",
+    "import": "node maintenance/import.js"
+  },
+  "dependencies": {
+    "@xenova/transformers": "^2.17.2",
+    "dotenv": "^17.4.2",
+    "pg": "^8.13.0"
+  }
+}

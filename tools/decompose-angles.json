@@ -1,0 +1,107 @@
+{
+  "description": "Decomposition angles for find-qa-context.js. Add new domains here instead of editing code.",
+  "angles": [
+    {
+      "name": "Architecture/UA",
+      "match": "refactor|ua|architecture|pattern|service|controller|view",
+      "queries": [
+        "UA pattern chuẩn cho {task}",
+        "Cách phân tách Service Controller View trong MDS WinForms"
+      ]
+    },
+    {
+      "name": "Async/Threading",
+      "match": "async|await|queue|thread|block|ui|load|performance",
+      "queries": [
+        "Cách chuyển sync method sang async trong WinForms MDS",
+        "_queue.Enqueue pattern để tránh block UI thread"
+      ]
+    },
+    {
+      "name": "Bug/Fix",
+      "match": "bug|lỗi|fix|sai|không lưu|không hiển thị|trống|empty|guard",
+      "queries": [
+        "Các lỗi phổ biến khi save data trong WinForms MDS"
+      ]
+    },
+    {
+      "name": "Permission/Security",
+      "match": "permission|quyền|security|phân quyền",
+      "queries": [
+        "Cách check permission trong WinForms UA chuẩn",
+        "clsSecurity migration sang scope extension"
+      ]
+    },
+    {
+      "name": "DTO/Parameter",
+      "match": "dto|param|parameter|tham số|truyền|model",
+      "queries": [
+        "Khi nào tạo DTO thay vì truyền param rời"
+      ]
+    },
+    {
+      "name": "UI Signals",
+      "match": "showinfo|showquestion|message|dialog|confirm|thông báo",
+      "queries": [
+        "ShowInfo ShowQuestion trong Service hay View"
+      ]
+    },
+    {
+      "name": "Grid/Binding",
+      "match": "grid|binding|datasource|column|row|bindingli|gv\\.",
+      "queries": [
+        "BindingList DevExpress grid pattern trong WinForms"
+      ]
+    },
+    {
+      "name": "Save/CRUD",
+      "match": "save|lưu|add|thêm|update|sửa|delete|xóa|crud",
+      "queries": [
+        "Pattern CRUD chuẩn trong MDS WinForms service"
+      ]
+    },
+    {
+      "name": "Inventory",
+      "match": "inventory|kho|xuất|nhập|lot|stock|nguyên vật liệu|nvl",
+      "queries": [
+        "Luồng xử lý inventory trong MDS"
+      ]
+    },
+    {
+      "name": "BaseForm Lifecycle",
+      "match": "baseform|load|runaftershown|initialize|lifecycle",
+      "queries": [
+        "BaseForm RunAfterShown pattern khởi tạo form"
+      ]
+    },
+    {
+      "name": "Inspection/QC",
+      "match": "inspection|kiểm tra|qc|quality|dipes|pa",
+      "queries": [
+        "Luồng inspection request trong MDS",
+        "QC workflow và approval pattern"
+      ]
+    },
+    {
+      "name": "Production",
+      "match": "production|sản xuất|job|schedule|bom|partlist|component",
+      "queries": [
+        "Production module workflow trong MDS"
+      ]
+    },
+    {
+      "name": "HandOver",
+      "match": "handover|bàn giao|chuyển giao|approval|duyệt",
+      "queries": [
+        "Handover approval workflow pattern"
+      ]
+    },
+    {
+      "name": "Report/Export",
+      "match": "report|báo cáo|export|excel|xls|pdf|print",
+      "queries": [
+        "DevExpress XtraReport pattern trong MDS"
+      ]
+    }
+  ]
+}
