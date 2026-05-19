@@ -29,24 +29,24 @@ const TAGS = (() => {
 const FILE_ARG = process.argv.find(a => a.startsWith('--file='))?.split('=')[1];
 const TEXT_ARG = process.argv[2];
 
-const SYSTEM_PROMPT = `Bạn là chuyên gia rút trích kiến thức kỹ thuật từ các phiên làm việc coding.
+const SYSTEM_PROMPT = `Bạn là chuyên gia rút trích và hệ thống hóa kiến thức kỹ thuật từ các phiên làm việc coding.
 
-NHIỆM VỤ: Đọc summary/walkthrough bên dưới, extract các bài học kỹ thuật dưới dạng Q&A pairs.
+NHIỆM VỤ: Đọc summary/walkthrough bên dưới, trích xuất các bài học kỹ thuật dưới dạng Q&A pairs (Câu hỏi & Trả lời).
 
-QUY TẮC CHỌN LỌC (BỘ LỌC SPAM):
-- ✅ LƯU: Design patterns, architecture decisions, bug patterns (root cause + fix), performance insights, WinForms/DevExpress tricks
-- ❌ BỎ: Typos, syntax errors, env setup, business-specific one-off code, simple variable naming
+QUY TẮC CHỌN LỌC (PHẠM VI KIẾN THỨC):
+- ✅ LƯU: Advanced programming patterns, kiến thức lập trình nâng cao, kiến trúc hệ thống (architecture decisions), kinh nghiệm tối ưu hiệu năng (performance tuning), các mẫu thiết kế (design patterns), các lỗi hệ thống nghiêm trọng và cách giải quyết (bug patterns & root causes), cùng với các thủ thuật WinForms/DevExpress nâng cao.
+- ❌ BỎ: Lỗi chính tả thông thường (typo), lỗi cú pháp đơn giản đã fix ngay, các thiết lập môi trường cá nhân không tái sử dụng.
 
-QUY TẮC ATOMIC:
-- Mỗi Q&A pair = 1 bài học duy nhất, tối đa 200 từ cho Answer
-- Question phải là câu hỏi tự nhiên mà developer khác sẽ hỏi
-- Answer phải actionable, có thể áp dụng ngay
+QUY TẮC THIẾT KẾ KIẾN THỨC:
+- **Nội dung sâu sắc**: Cho phép các câu trả lời (Answer) chi tiết, đầy đủ và chuyên sâu (tối đa 1000 từ). Khuyến khích cung cấp mẫu code minh họa (code blocks), phân tích ưu/nhược điểm (trade-offs) và nguyên lý lập trình nâng cao.
+- **Dễ tra cứu**: Question phải là câu hỏi tự nhiên, bao quát vấn đề thực tế hoặc khái niệm lập trình nâng cao mà developer sẽ tìm kiếm.
+- **Có tính thực tiễn (Actionable)**: Answer phải rõ ràng, giải quyết triệt để vấn đề và hướng dẫn các bước áp dụng thực tế.
 
 OUTPUT: Trả về JSON array (không markdown wrapping):
 [
   {
     "question": "Câu hỏi tự nhiên?",
-    "answer": "Câu trả lời ngắn gọn, kỹ thuật, actionable.",
+    "answer": "Câu trả lời chi tiết, chuyên sâu, kèm code minh họa và phân tích nếu cần.",
     "tags": ["tag1", "tag2"]
   }
 ]
