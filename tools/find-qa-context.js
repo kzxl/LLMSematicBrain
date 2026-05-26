@@ -9,9 +9,10 @@
  *   node tools/find-qa-context.js "<task description>" [--tags=ua,winforms] [--limit=5]
  */
 
-const { pool, embed, tokenize, qaRankingQuery, normalizeTags } = require('../core');
+const { pool, embed, tokenize, qaRankingQuery, normalizeTags, inferTags } = require('../core');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 // Parse args
 const task = process.argv[2];
@@ -19,11 +20,54 @@ const PROJECT = (() => {
   const arg = process.argv.find(a => a.startsWith('--project='));
   return arg ? arg.split('=')[1].trim().toLowerCase() : null;
 })();
+
+function inferTagsFromGit() {
+  try {
+    const status = execSync('git status --porcelain', { encoding: 'utf-8', timeout: 2000 });
+    const lines = status.split('\n');
+    const tags = new Set();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const filePath = line.substring(3).trim();
+      const parts = filePath.replace(/\\/g, '/').split('/');
+      
+      // Infer project branch (MDS, RAF, MOP, MLG2)
+      if (parts.includes('MDS')) tags.add('project:mds');
+      if (parts.includes('RAF')) tags.add('project:raf');
+      if (parts.includes('MOP')) tags.add('project:mop');
+      if (parts.includes('MLG2')) tags.add('project:mlg2');
+      
+      // Infer feature name
+      const featuresIdx = parts.indexOf('Features');
+      if (featuresIdx !== -1 && parts[featuresIdx + 1]) {
+        const feature = parts[featuresIdx + 1].trim().toLowerCase();
+        if (feature) tags.add(feature);
+      }
+    }
+    return [...tags];
+  } catch (e) {
+    return [];
+  }
+}
+
 const TAGS = (() => {
   const arg = process.argv.find(a => a.startsWith('--tags='));
   const raw = arg ? arg.split('=')[1].split(',').map(t => t.trim()).filter(t => t) : [];
-  const normalized = normalizeTags(raw);
-  if (PROJECT && !normalized.includes(`project:${PROJECT}`)) normalized.push(`project:${PROJECT}`);
+  
+  // 1. Infer from git status modified files
+  const gitTags = inferTagsFromGit();
+  
+  // 2. Infer from query text (task description) using inferTags
+  const textTags = inferTags(task, '', []);
+  
+  // Combine all raw tags
+  const combinedRaw = [...new Set([...raw, ...gitTags, ...textTags])];
+  const normalized = normalizeTags(combinedRaw);
+  
+  // Apply project filter if specified
+  if (PROJECT && !normalized.includes(`project:${PROJECT}`)) {
+    normalized.push(`project:${PROJECT}`);
+  }
   return normalized;
 })();
 const LIMIT = (() => {

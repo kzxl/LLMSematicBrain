@@ -54,6 +54,68 @@ async function getPipeline() {
   return pipelinePromise;
 }
 
+const crypto = require('crypto');
+
+let tableChecked = false;
+async function ensureCacheTable() {
+  if (tableChecked) return;
+  try {
+    const pool = require('./db');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agent_query_embedding_cache (
+        query_hash VARCHAR(32) PRIMARY KEY,
+        query_text TEXT NOT NULL,
+        embedding VECTOR(1024) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    tableChecked = true;
+  } catch (err) {
+    console.error('[EMBED CACHE] Table check failed:', err.message);
+  }
+}
+
+function getMd5(text) {
+  return crypto.createHash('md5').update(text).digest('hex');
+}
+
+async function getDatabaseCachedEmbedding(text) {
+  try {
+    await ensureCacheTable();
+    const hash = getMd5(text.trim().toLowerCase());
+    const pool = require('./db');
+    const res = await pool.query(
+      'SELECT embedding FROM agent_query_embedding_cache WHERE query_hash = $1',
+      [hash]
+    );
+    if (res.rows.length > 0) {
+      const rawEmb = res.rows[0].embedding;
+      if (typeof rawEmb === 'string') {
+        return rawEmb.replace(/[\[\]]/g, '').split(',').map(Number);
+      }
+      return rawEmb;
+    }
+  } catch (err) {
+    // Silently fallback if table query fails
+  }
+  return null;
+}
+
+async function saveDatabaseCachedEmbedding(text, embedding) {
+  try {
+    await ensureCacheTable();
+    const hash = getMd5(text.trim().toLowerCase());
+    const pool = require('./db');
+    await pool.query(`
+      INSERT INTO agent_query_embedding_cache (query_hash, query_text, embedding)
+      VALUES ($1, $2, $3::vector)
+      ON CONFLICT (query_hash) DO NOTHING
+    `, [hash, text, JSON.stringify(embedding)]);
+  } catch (err) {
+    // Silently ignore save failures
+  }
+}
+
 /**
  * @param {string} text 
  * @param {number} retries - Retry count (default 2)
@@ -62,17 +124,29 @@ async function getPipeline() {
 async function embed(text, retries = 2) {
   if (!text || text.trim() === '') return new Array(MODEL_DIMS).fill(0);
   
-  // Check cache first
+  // Check memory cache first
   const cacheKey = text.trim().substring(0, 200).toLowerCase();
-  const cached = cacheGet(cacheKey);
-  if (cached) return cached;
+  const cachedMemory = cacheGet(cacheKey);
+  if (cachedMemory) return cachedMemory;
+
+  // Check database cache next
+  const cachedDb = await getDatabaseCachedEmbedding(text);
+  if (cachedDb) {
+    // Sync to memory cache for fast subsequent hits
+    cacheSet(cacheKey, cachedDb);
+    return cachedDb;
+  }
   
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const extractor = await getPipeline();
       const output = await extractor(text, { pooling: 'cls', normalize: true });
       const result = Array.from(output.data);
+      
+      // Save to both caches
       cacheSet(cacheKey, result);
+      await saveDatabaseCachedEmbedding(text, result);
+      
       return result;
     } catch (err) {
       if (attempt === retries) throw err;

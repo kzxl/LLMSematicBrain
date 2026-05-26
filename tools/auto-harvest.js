@@ -29,29 +29,30 @@ const TAGS = (() => {
 const FILE_ARG = process.argv.find(a => a.startsWith('--file='))?.split('=')[1];
 const TEXT_ARG = process.argv[2];
 
-const SYSTEM_PROMPT = `Bạn là chuyên gia rút trích và hệ thống hóa kiến thức kỹ thuật từ các phiên làm việc coding.
+const SYSTEM_PROMPT = `You are a technical knowledge extraction expert for developer coding sessions.
 
-NHIỆM VỤ: Đọc summary/walkthrough bên dưới, trích xuất các bài học kỹ thuật dưới dạng Q&A pairs (Câu hỏi & Trả lời).
+TASK: Analyze the provided walkthrough/summary and extract generalizable technical lessons as Q&A pairs.
 
-QUY TẮC CHỌN LỌC (PHẠM VI KIẾN THỨC):
-- ✅ LƯU: Advanced programming patterns, kiến thức lập trình nâng cao, kiến trúc hệ thống (architecture decisions), kinh nghiệm tối ưu hiệu năng (performance tuning), các mẫu thiết kế (design patterns), các lỗi hệ thống nghiêm trọng và cách giải quyết (bug patterns & root causes), cùng với các thủ thuật WinForms/DevExpress nâng cao.
-- ❌ BỎ: Lỗi chính tả thông thường (typo), lỗi cú pháp đơn giản đã fix ngay, các thiết lập môi trường cá nhân không tái sử dụng.
+SPAM & NOISE FILTER (STRICT):
+- ✅ SAVE: Generalizable design patterns, architectural decisions, common bug patterns (root cause + fix principles), performance optimizations, and framework-level tricks (e.g. WinForms, DevExpress, WebAPI).
+- ❌ IGNORE: Typos, syntax errors, environment configurations, and file-specific/feature-specific business logic (e.g., "how to fix UI alignment in ucStockIn.cs", "renaming controls in ucDetailedError"). Avoid saving rules that only apply to a single class and cannot be reused elsewhere.
 
-QUY TẮC THIẾT KẾ KIẾN THỨC:
-- **Nội dung sâu sắc**: Cho phép các câu trả lời (Answer) chi tiết, đầy đủ và chuyên sâu (tối đa 1000 từ). Khuyến khích cung cấp mẫu code minh họa (code blocks), phân tích ưu/nhược điểm (trade-offs) và nguyên lý lập trình nâng cao.
-- **Dễ tra cứu**: Question phải là câu hỏi tự nhiên, bao quát vấn đề thực tế hoặc khái niệm lập trình nâng cao mà developer sẽ tìm kiếm.
-- **Có tính thực tiễn (Actionable)**: Answer phải rõ ràng, giải quyết triệt để vấn đề và hướng dẫn các bước áp dụng thực tế.
+ATOMIC RULES:
+- 1 Q&A pair = 1 single lesson.
+- Question must be a natural search query that another developer would type (English or Vietnamese is fine, but English is preferred).
+- **Answer MUST be written in ultra-concise, Telegraphic English** (max 150 words). Use bullet points, omit conversational filler, and keep code blocks intact.
+- Tags must be specific and multi-dimensional (domain/module, pattern/architecture, skill/workflow).
 
-OUTPUT: Trả về JSON array (không markdown wrapping):
+OUTPUT: Return raw JSON array (no markdown code blocks):
 [
   {
-    "question": "Câu hỏi tự nhiên?",
-    "answer": "Câu trả lời chi tiết, chuyên sâu, kèm code minh họa và phân tích nếu cần.",
+    "question": "Natural search query?",
+    "answer": "Telegraphic English answer.",
     "tags": ["tag1", "tag2"]
   }
 ]
 
-Nếu KHÔNG có bài học nào đáng lưu, trả về: []`;
+If NO valuable, generalizable lesson is found, return: []`;
 
 async function harvest(inputText) {
   if (!inputText || inputText.trim().length < 50) {

@@ -194,6 +194,41 @@ async function run() {
   console.log();
 
   // ───────────────────────────────────────────────
+  // 7. Obsolete Rules Check (Auto-Deprecation)
+  // ───────────────────────────────────────────────
+  const obsolete = await pool.query(`
+    SELECT id, LEFT(question, 50) as question, confidence_score
+    FROM agent_qa_cache
+    WHERE (question ILIKE '%c# 6%' OR answer_context ILIKE '%c# 6%'
+       OR question ILIKE '%c#6%' OR answer_context ILIKE '%c#6%'
+       OR question ILIKE '%bindingsource%' OR answer_context ILIKE '%bindingsource%'
+       OR question ILIKE '%copyfromwithlog%' OR answer_context ILIKE '%copyfromwithlog%')
+       AND confidence_score > 0.0
+  `);
+
+  console.log(`── 7. Obsolete Rules Check ──`);
+  if (obsolete.rows.length === 0) {
+    console.log(`   ✅ No obsolete rules found\n`);
+  } else {
+    console.log(`   ⚠️  ${obsolete.rows.length} obsolete entries to decay to 0.0\n`);
+    obsolete.rows.forEach(r => {
+      console.log(`   [${r.id}] conf: ${r.confidence_score} | ${r.question}...`);
+      issues.push({ id: r.id, type: 'obsolete_rule', action: 'decay → 0.0' });
+    });
+
+    if (!DRY_RUN) {
+      const ids = obsolete.rows.map(r => r.id);
+      const decayObs = await pool.query(
+        `UPDATE agent_qa_cache SET confidence_score = 0.0, updated_at = NOW() WHERE id = ANY($1::int[])`,
+        [ids]
+      );
+      fixCount += decayObs.rowCount;
+      console.log(`\n   ✅ Decayed ${decayObs.rowCount} obsolete entries to conf 0.0`);
+    }
+    console.log();
+  }
+
+  // ───────────────────────────────────────────────
   // Summary
   // ───────────────────────────────────────────────
   console.log(`═══════════════════════════════════════════════`);
