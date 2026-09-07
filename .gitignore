@@ -3,4 +3,5 @@ node_modules/
 *.log
 .cache/
 data/*.ame
+data/*.jsonl
 *.ame
