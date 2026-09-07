@@ -10,25 +10,29 @@
 const { pool, embed, extractKeywords, inferTags } = require('../core');
 
 function parseArgs(args) {
-  const opts = { source: 'manual', category: 'general', tags: [], confidence: 1.0, project: null };
+  const opts = { source: 'manual', category: 'general', tags: [], confidence: 1.0, project: null, pinned: false };
   for (const arg of args) {
     if (arg.startsWith('--source=')) opts.source = arg.split('=')[1];
     else if (arg.startsWith('--category=')) opts.category = arg.split('=')[1];
     else if (arg.startsWith('--confidence=')) opts.confidence = parseFloat(arg.split('=')[1]);
     else if (arg.startsWith('--tags=')) opts.tags = arg.split('=')[1].split(',').map(t => t.trim()).filter(t => t);
     else if (arg.startsWith('--project=')) opts.project = arg.split('=')[1].trim().toLowerCase();
+    else if (arg === '--pinned') opts.pinned = true;
   }
-  // Inject project tag nếu có
+  // Inject project tag neu co
   if (opts.project) {
     const projectTag = `project:${opts.project}`;
     if (!opts.tags.includes(projectTag)) opts.tags.push(projectTag);
+  }
+  if (opts.pinned && !opts.tags.includes('pinned')) {
+    opts.tags.push('pinned');
   }
   return opts;
 }
 
 async function saveQA(question, answer) {
   if (!question || !answer) {
-    console.log('Usage: node save-qa.js "<Question>" "<Answer>" [--source=manual] [--confidence=1.0] [--category=general] [--tags=a,b]');
+    console.log('Usage: node save-qa.js "<Question>" "<Answer>" [--source=manual] [--confidence=1.0] [--category=general] [--tags=a,b] [--pinned]');
     process.exit(1);
   }
 
@@ -38,31 +42,59 @@ async function saveQA(question, answer) {
 
   const searchText = `${question} ${answer}`.toLowerCase();
   const vec = await embed(searchText);
-
   const keywords = extractKeywords(searchText);
 
   try {
-    // Check if question already exists (dedup by hash)
-    const existing = await pool.query(
-      `SELECT id, answer_context FROM agent_qa_cache WHERE question_hash = md5(lower($1))`, [question]
+    // 1. Check exact question hash match
+    const exactMatch = await pool.query(
+      `SELECT id, question, answer_context, tags, hit_count FROM agent_qa_cache WHERE question_hash = md5(lower($1))`, [question]
     );
 
-    if (existing.rows.length > 0) {
-      const old = existing.rows[0];
-      // Log history before overwriting
+    let targetRow = exactMatch.rows.length > 0 ? exactMatch.rows[0] : null;
+    let matchType = targetRow ? 'exact_hash' : null;
+
+    // 2. If no exact hash, check semantic similarity threshold (>= 0.85) within same project/domain
+    if (!targetRow) {
+      const projectTag = opts.project ? `project:${opts.project}` : null;
+      const simQuery = `
+        SELECT id, question, answer_context, tags, hit_count,
+               1 - (embedding <=> $1::vector) AS similarity
+        FROM agent_qa_cache
+        WHERE ($2::text IS NULL OR $2 = ANY(tags))
+          AND 1 - (embedding <=> $1::vector) >= 0.85
+        ORDER BY similarity DESC
+        LIMIT 1;
+      `;
+      const simMatch = await pool.query(simQuery, [JSON.stringify(vec), projectTag]);
+      if (simMatch.rows.length > 0) {
+        targetRow = simMatch.rows[0];
+        matchType = `semantic_dedup (${(simMatch.rows[0].similarity * 100).toFixed(1)}% match)`;
+      }
+    }
+
+    if (targetRow) {
+      // Record historical version
       await pool.query(
         `INSERT INTO agent_qa_history (qa_id, old_answer, new_answer, changed_by) VALUES ($1, $2, $3, $4)`,
-        [old.id, old.answer_context, answer, opts.source]
+        [targetRow.id, targetRow.answer_context, answer, opts.source]
       );
-      // Update existing entry
+
+      // Merge tags and retain pinned flag if already pinned
+      const mergedTags = [...new Set([...(targetRow.tags || []), ...opts.tags])];
+      if (opts.pinned && !mergedTags.includes('pinned')) {
+        mergedTags.push('pinned');
+      }
+
+      // Update and strengthen existing QA entry
       await pool.query(`
         UPDATE agent_qa_cache 
         SET answer_context = $1, search_text = $2, keywords = $3, embedding = $4,
-            source = $5, category = $6, tags = $7, confidence_score = $8, updated_at = NOW()
+            source = $5, category = $6, tags = $7, confidence_score = $8,
+            hit_count = COALESCE(hit_count, 0) + 1, updated_at = NOW()
         WHERE id = $9
-      `, [answer, searchText, [...keywords], JSON.stringify(vec), opts.source, opts.category, opts.tags, opts.confidence, old.id]);
+      `, [answer, searchText, [...keywords], JSON.stringify(vec), opts.source, opts.category, mergedTags, opts.confidence, targetRow.id]);
 
-      console.log(`[~] QA Cache updated: id=${old.id} (history saved)`);
+      console.log(`[~] QA Cache strengthened [${matchType}]: id=${targetRow.id} (history saved, tags: ${mergedTags.join(',')})`);
     } else {
       // Insert new entry
       const result = await pool.query(`
@@ -71,7 +103,7 @@ async function saveQA(question, answer) {
         RETURNING id
       `, [question, answer, searchText, [...keywords], JSON.stringify(vec), opts.source, opts.category, opts.tags, opts.confidence]);
 
-      console.log(`[+] QA Cache saved: id=${result.rows[0].id}`);
+      console.log(`[+] QA Cache saved: id=${result.rows[0].id} (tags: ${opts.tags.join(',')})`);
     }
   } catch (err) {
     console.error('[ERROR]', err.message);

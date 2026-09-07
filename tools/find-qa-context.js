@@ -16,6 +16,7 @@ const { execSync } = require('child_process');
 
 // Parse args
 const task = process.argv[2];
+const IS_FULL = process.argv.includes('--full');
 const PROJECT = (() => {
   const arg = process.argv.find(a => a.startsWith('--project='));
   return arg ? arg.split('=')[1].trim().toLowerCase() : null;
@@ -184,18 +185,32 @@ async function findQAContext(taskDescription) {
   console.log(`[CONTEXT RESULT] ${top.length} relevant QA entries found (from ${collected.length} total matches, ${queries.length} angles)`);
   console.log(`${'='.repeat(60)}\n`);
 
-  top.forEach((row, i) => {
-    const score = (row.max_db_score * 100).toFixed(0);
-    const rrfDisplay = (row.cross_rrf_score * 100).toFixed(1);
-    const tags = (row.tags || []).join(', ');
-    console.log(`--- [${i + 1}] QA #${row.id} | DB_Score: ${score}% | Cross_RRF: ${rrfDisplay} | Tags: ${tags} ---`);
-    console.log(`Q: ${row.question}`);
-    console.log(`A: ${row.answer_context}`);
-    console.log(`   [matched via: ${row.matched_queries.map(q => `"${q}"`).join(', ')}]\n`);
-  });
+  if (!IS_FULL) {
+    console.log(`📌 [PROGRESSIVE DISCLOSURE: L0 INDEX] (Append --full for complete context, or run: node brain.js view <id>)\n`);
+    top.forEach((row, i) => {
+      const score = (row.max_db_score * 100).toFixed(0);
+      const tags = (row.tags || []).join(', ');
+      const cleanAnswer = (row.answer_context || '').replace(/\r?\n+/g, ' ').trim();
+      const preview = cleanAnswer.length > 140 ? cleanAnswer.substring(0, 137) + '...' : cleanAnswer;
 
-  console.log(`${'='.repeat(60)}`);
-  console.log(`[SUMMARY] ${top.length} knowledge blocks loaded. Agent should use these as pre-context before analysis.`);
+      console.log(`[#${row.id}] (${score}% match) [${tags}] ${row.question}`);
+      console.log(`      └─ Gotcha/Fix: ${preview}`);
+    });
+    console.log(`\n💡 To view detailed root cause & code snippet for any entry, run: node brain.js view <id>`);
+  } else {
+    top.forEach((row, i) => {
+      const score = (row.max_db_score * 100).toFixed(0);
+      const rrfDisplay = (row.cross_rrf_score * 100).toFixed(1);
+      const tags = (row.tags || []).join(', ');
+      console.log(`--- [${i + 1}] QA #${row.id} | DB_Score: ${score}% | Cross_RRF: ${rrfDisplay} | Tags: ${tags} ---`);
+      console.log(`Q: ${row.question}`);
+      console.log(`A: ${row.answer_context}`);
+      console.log(`   [matched via: ${row.matched_queries.map(q => `"${q}"`).join(', ')}]\n`);
+    });
+  }
+
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`[SUMMARY] ${top.length} knowledge items resolved. Use these as pre-context before coding.`);
   console.log(`${'='.repeat(60)}`);
 }
 

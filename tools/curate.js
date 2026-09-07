@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+/**
+ * curate.js - Knowledge Lifecycle & Curation Engine
+ *
+ * Scans the QA repository for knowledge health:
+ *   1. Active: Recently used or updated (< stale_days)
+ *   2. Stale: Unused for > stale_days
+ *   3. Pinned: Golden invariants explicitly marked (protected from lifecycle changes)
+ *   4. Overlapping: Pairs with cosine similarity > 0.88 eligible for consolidation
+ *
+ * Usage:
+ *   node tools/curate.js [--project=name] [--stale-days=60] [--dry-run] [--mark-stale]
+ */
+
+const { pool } = require('../core');
+
+const DRY_RUN = process.argv.includes('--dry-run') || !process.argv.includes('--mark-stale');
+const PROJECT_ARG = process.argv.find(a => a.startsWith('--project='))?.split('=')[1]?.toLowerCase() || null;
+const STALE_DAYS = parseInt(process.argv.find(a => a.startsWith('--stale-days='))?.split('=')[1] || '60', 10);
+
+async function curate() {
+  console.log(`\n╔═══════════════════════════════════════════════════════════════╗`);
+  console.log(`║ 🧹 KNOWLEDGE LIFECYCLE CURATION ENGINE                       ║`);
+  console.log(`║ Mode: ${DRY_RUN ? 'DRY-RUN (Audit Only)' : '⚡ LIVE MUTATION'} | Threshold: ${STALE_DAYS} days | Project: ${(PROJECT_ARG || 'all').padEnd(10)}║`);
+  console.log(`╚═══════════════════════════════════════════════════════════════╝\n`);
+
+  try {
+    const projectFilter = PROJECT_ARG ? `AND 'project:${PROJECT_ARG}' = ANY(tags)` : '';
+
+    // 1. Fetch summary metrics
+    const rows = (await pool.query(`
+      SELECT id, question, answer_context, tags, hit_count, useful_count, updated_at,
+             EXTRACT(DAY FROM NOW() - updated_at)::int AS idle_days
+      FROM agent_qa_cache
+      WHERE 1=1 ${projectFilter}
+      ORDER BY id ASC
+    `)).rows;
+
+    if (rows.length === 0) {
+      console.log('No QA records found matching criteria.');
+      return;
+    }
+
+    let pinnedCount = 0;
+    let activeCount = 0;
+    let staleCount = 0;
+    const staleCandidates = [];
+
+    for (const r of rows) {
+      const isPinned = (r.tags || []).includes('pinned');
+      if (isPinned) {
+        pinnedCount++;
+        continue;
+      }
+
+      if (r.idle_days > STALE_DAYS && (r.hit_count === 0 || r.hit_count === null)) {
+        staleCount++;
+        staleCandidates.push(r);
+      } else {
+        activeCount++;
+      }
+    }
+
+    console.log(`📊 Knowledge State Overview:`);
+    console.log(`   • Total Records:   ${rows.length}`);
+    console.log(`   • Pinned (Golden): ${pinnedCount}`);
+    console.log(`   • Active:          ${activeCount}`);
+    console.log(`   • Stale Candidate: ${staleCount} (unused > ${STALE_DAYS} days)\n`);
+
+    if (staleCandidates.length > 0) {
+      console.log(`── Stale Candidates (Top 5 least active) ───────────────────────`);
+      staleCandidates.slice(0, 5).forEach(r => {
+        console.log(`   [#${r.id}] (${r.idle_days} days idle, 0 hits) ${(r.question || '').substring(0, 70)}...`);
+      });
+
+      if (!DRY_RUN) {
+        const staleIds = staleCandidates.map(r => r.id);
+        await pool.query(`
+          UPDATE agent_qa_cache
+          SET tags = array_append(tags, 'status:stale')
+          WHERE id = ANY($1::int[]) AND NOT ('status:stale' = ANY(tags))
+        `, [staleIds]);
+        console.log(`\n   ✅ Applied 'status:stale' tag to ${staleIds.length} candidate(s).`);
+      } else {
+        console.log(`\n   ℹ️ [DRY-RUN] No tags modified. Pass --mark-stale to apply.`);
+      }
+    }
+
+    // 2. Scan for high-similarity semantic overlaps (potential redundancy)
+    console.log(`\n── Near-Duplicate / Overlap Audit (Cosine Similarity >= 88%) ────`);
+    const overlapQuery = `
+      SELECT a.id AS id1, a.question AS q1, b.id AS id2, b.question AS q2,
+             1 - (a.embedding <=> b.embedding) AS similarity
+      FROM agent_qa_cache a
+      JOIN agent_qa_cache b ON a.id < b.id
+      WHERE 1 - (a.embedding <=> b.embedding) >= 0.88
+        ${PROJECT_ARG ? `AND 'project:${PROJECT_ARG}' = ANY(a.tags) AND 'project:${PROJECT_ARG}' = ANY(b.tags)` : ''}
+      ORDER BY similarity DESC
+      LIMIT 5;
+    `;
+
+    const overlaps = (await pool.query(overlapQuery)).rows;
+    if (overlaps.length === 0) {
+      console.log(`   ✅ No near-duplicate entries found (library is cleanly deduplicated).`);
+    } else {
+      overlaps.forEach(o => {
+        console.log(`   ⚠️ ${(o.similarity * 100).toFixed(1)}% match: [#${o.id1}] vs [#${o.id2}]`);
+        console.log(`      A: "${o.q1.substring(0, 60)}..."`);
+        console.log(`      B: "${o.q2.substring(0, 60)}..."`);
+      });
+      console.log(`   💡 Recommendation: Consolidate overlapping items using 'save-qa.js' or post-task strengthening.`);
+    }
+
+    console.log(`\n═══════════════════════════════════════════════════════════════`);
+    console.log(`[DONE] Knowledge curation cycle finished.`);
+    console.log(`═══════════════════════════════════════════════════════════════\n`);
+  } catch (err) {
+    console.error('[CURATION ERROR]', err.message);
+  } finally {
+    await pool.end();
+  }
+}
+
+curate();
