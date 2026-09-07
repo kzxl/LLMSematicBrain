@@ -7,7 +7,7 @@
  * Tự động UPSERT: Nếu question đã tồn tại (theo md5 hash), sẽ UPDATE answer + ghi history.
  * Multi-tenant: --project=erp sẽ inject tag 'project:erp' để phân biệt nguồn dữ liệu.
  */
-const { pool, embed, extractKeywords, inferTags } = require('../core');
+const { pool, embed, extractKeywords, inferTags, storageAme, config } = require('../core');
 
 function parseArgs(args) {
   const opts = { source: 'manual', category: 'general', tags: [], confidence: 1.0, project: null, pinned: false };
@@ -40,9 +40,33 @@ async function saveQA(question, answer) {
   // Tu dong update tags theo bo tu dien
   opts.tags = inferTags(question, answer, opts.tags);
 
+  let savedToAme = false;
+  try {
+    const ameStatus = await storageAme.isAmeAvailable();
+    if (ameStatus.available) {
+      const ameRes = await storageAme.saveQA(question, answer, opts);
+      console.log(`[+] AME Cognitive saved: [${opts.category || 'Episodic'}] (tags: ${opts.tags.join(',')}) via ${ameRes.backend}`);
+      savedToAme = true;
+    }
+  } catch (ameErr) {
+    console.warn(`[WARN] AME save: ${ameErr.message}`);
+  }
+
+  // If backend is explicitly AME, skip PostgreSQL
+  if (config.backend === 'ame') {
+    return;
+  }
+
   const searchText = `${question} ${answer}`.toLowerCase();
-  const vec = await embed(searchText);
-  const keywords = extractKeywords(searchText);
+  let vec = null;
+  let keywords = [];
+
+  try {
+    vec = await embed(searchText);
+    keywords = extractKeywords(searchText);
+  } catch (embErr) {
+    if (savedToAme) return; // Embedded failed but AME already persisted
+  }
 
   try {
     // 1. Check exact question hash match
@@ -54,7 +78,7 @@ async function saveQA(question, answer) {
     let matchType = targetRow ? 'exact_hash' : null;
 
     // 2. If no exact hash, check semantic similarity threshold (>= 0.85) within same project/domain
-    if (!targetRow) {
+    if (!targetRow && vec) {
       const projectTag = opts.project ? `project:${opts.project}` : null;
       const simQuery = `
         SELECT id, question, answer_context, tags, hit_count,
@@ -95,7 +119,7 @@ async function saveQA(question, answer) {
       `, [answer, searchText, [...keywords], JSON.stringify(vec), opts.source, opts.category, mergedTags, opts.confidence, targetRow.id]);
 
       console.log(`[~] QA Cache strengthened [${matchType}]: id=${targetRow.id} (history saved, tags: ${mergedTags.join(',')})`);
-    } else {
+    } else if (vec) {
       // Insert new entry
       const result = await pool.query(`
         INSERT INTO agent_qa_cache (question, answer_context, search_text, keywords, embedding, source, category, tags, confidence_score)
@@ -106,9 +130,15 @@ async function saveQA(question, answer) {
       console.log(`[+] QA Cache saved: id=${result.rows[0].id} (tags: ${opts.tags.join(',')})`);
     }
   } catch (err) {
-    console.error('[ERROR]', err.message);
+    if (savedToAme) {
+      console.log(`[INFO] QA successfully persisted to AME (PostgreSQL skipped/offline).`);
+    } else {
+      console.error('[ERROR]', err.message);
+    }
   } finally {
-    await pool.end();
+    try {
+      await pool.end();
+    } catch {}
   }
 }
 

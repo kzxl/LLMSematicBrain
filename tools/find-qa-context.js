@@ -9,7 +9,7 @@
  *   node tools/find-qa-context.js "<task description>" [--tags=ua,winforms] [--limit=5]
  */
 
-const { pool, embed, tokenize, qaRankingQuery, normalizeTags, inferTags } = require('../core');
+const { pool, embed, tokenize, qaRankingQuery, normalizeTags, inferTags, storageAme, config } = require('../core');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
@@ -17,6 +17,7 @@ const { execSync } = require('child_process');
 // Parse args
 const task = process.argv[2];
 const IS_FULL = process.argv.includes('--full');
+const BACKEND_ARG = process.argv.find(a => a.startsWith('--backend='))?.split('=')[1]?.toLowerCase();
 const PROJECT = (() => {
   const arg = process.argv.find(a => a.startsWith('--project='));
   return arg ? arg.split('=')[1].trim().toLowerCase() : null;
@@ -109,10 +110,36 @@ function decomposeToQueries(taskDescription) {
   return [...new Set(queries)];
 }
 
+async function resolveActiveBackend() {
+  if (BACKEND_ARG === 'ame') return 'ame';
+  if (BACKEND_ARG === 'postgres' || BACKEND_ARG === 'pg') return 'postgres';
+  if (config.backend === 'ame') return 'ame';
+  if (config.backend === 'postgres') return 'postgres';
+
+  // auto mode: check if AME is ready
+  const status = await storageAme.isAmeAvailable();
+  if (status.available) return 'ame';
+  return 'postgres';
+}
+
 /**
  * Search DB với 1 query, return top rows
  */
-async function searchOne(question, tagsFilter) {
+async function searchOne(question, tagsFilter, activeBackend) {
+  if (activeBackend === 'ame') {
+    try {
+      return await storageAme.queryContext(question, {
+        limit: 5,
+        minSimilarity: MIN_SCORE,
+        tags: tagsFilter,
+        project: PROJECT
+      });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // PostgreSQL fallback
   const query = question.trim().toLowerCase();
   const tokens = tokenize(query);
   const vec = await embed(query);
@@ -128,7 +155,9 @@ async function searchOne(question, tagsFilter) {
  * Main: Multi-angle sweep + dedup + format
  */
 async function findQAContext(taskDescription) {
+  const activeBackend = await resolveActiveBackend();
   console.log(`[CONTEXT SWEEP] Task: "${taskDescription}"`);
+  console.log(`[CONTEXT SWEEP] Backend: ${activeBackend === 'ame' ? '⚡ AME (Sub-millisecond Cognitive)' : '🐘 PostgreSQL'}`);
   console.log(`[CONTEXT SWEEP] Tags filter: ${TAGS.length > 0 ? TAGS.join(',') : 'none'}\n`);
 
   const queries = decomposeToQueries(taskDescription);
@@ -140,7 +169,7 @@ async function findQAContext(taskDescription) {
 
   for (const q of queries) {
     try {
-      const rows = await searchOne(q, TAGS);
+      const rows = await searchOne(q, TAGS, activeBackend);
       rows.forEach((row, index) => {
         const rank = index + 1;
         const crossRrfAdd = 1.0 / (60.0 + rank);
@@ -174,11 +203,13 @@ async function findQAContext(taskDescription) {
   const top = collected.slice(0, LIMIT);
 
   const ids = top.map(r => r.id);
-  if (ids.length > 0) {
-    await pool.query(
-      `UPDATE agent_qa_cache SET hit_count = hit_count + 1 WHERE id = ANY($1::int[])`,
-      [ids]
-    );
+  if (ids.length > 0 && activeBackend === 'postgres') {
+    try {
+      await pool.query(
+        `UPDATE agent_qa_cache SET hit_count = hit_count + 1 WHERE id = ANY($1::int[])`,
+        [ids]
+      );
+    } catch {}
   }
 
   console.log(`\n${'='.repeat(60)}`);

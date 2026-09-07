@@ -43,6 +43,12 @@ const config = {
     name: process.env.DOMAIN_NAME || 'My Project',
     description: process.env.DOMAIN_DESCRIPTION || 'chuyên gia hệ thống phần mềm',
   },
+  backend: process.env.MEMORY_BACKEND || 'auto', // 'ame' | 'postgres' | 'auto'
+  ame: {
+    pipeName: process.env.AME_PIPE || 'ame_pipe',
+    defaultDb: process.env.AME_DB_PATH || path.join(__dirname, '..', 'data', 'semantic_brain.ame'),
+    cliPath: process.env.AME_CLI_PATH || 'E:\\15. Other\\AgentMemoryEngine\\dist\\lite\\AgentMemoryEngine.Cli.exe',
+  },
   agentRoot: process.env.AGENT_ROOT || '',
 };
 

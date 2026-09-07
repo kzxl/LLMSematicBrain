@@ -10,6 +10,7 @@ const { askLLM, askWithReasoning, askLocal, askLocalStream, askCloud, DEFAULT_MO
 const { extractKeywords, extractRegistryKeywords, DOMAIN_PATTERNS, inferTags, TAG_RULES, normalizeTags } = require('./keywords');
 const { callServer, streamServer, isServerUp, PORT: SERVER_PORT } = require('./client');
 const { qaRankingQuery, recipeRankingQuery, skillRankingQuery, tokenize } = require('./queries');
+const storageAme = require('./storage-ame');
 
 module.exports = {
   config,
@@ -19,4 +20,5 @@ module.exports = {
   extractKeywords, extractRegistryKeywords, DOMAIN_PATTERNS, inferTags, TAG_RULES, normalizeTags,
   callServer, streamServer, isServerUp, SERVER_PORT,
   qaRankingQuery, recipeRankingQuery, skillRankingQuery, tokenize,
+  storageAme,
 };
