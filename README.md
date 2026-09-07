@@ -1,104 +1,150 @@
-# Semantic Brain
+# 🧠 agentic-brain — Episodic Semantic Memory Engine for AI Agents
 
-**"The Long-Term Memory Proxy for AI Coding Agents (Cursor, Cline, Ollama)"**
+**agentic-brain** is an offline, high-performance episodic and semantic memory engine for autonomous AI coding agents (Claude, Gemini, Cursor, Cline, OpenCode). Powered by PostgreSQL with `pgvector` and local BGE-M3 embeddings, it functions as the long-term memory substrate (Tier L2/L3) within the [agentic-core](https://github.com/kzxl/agentic-core) enterprise operating system.
 
-Local RAG knowledge base với Vector Search — chạy hoàn toàn offline, đóng vai trò như một bộ nhớ dài hạn, tự động nhồi kiến thức hệ thống vào Prompt của các AI Agent và IDE mà không cần thay đổi code của Client.
+---
 
-## Kiến trúc (Architecture)
+## 🏛️ Ecosystem Architecture
 
 ```mermaid
 graph TD
-    User(["Lập trình viên"]) -->|"Code / Chat"| IDE("Cursor / VS Code / Cline")
-    IDE -->|"Gửi request API"| Proxy["OpenAI Proxy :3458"]
+    Agent(["Autonomous Coding Agent / IDE"]) -->|"1. PRE: Query Context"| CoreBridge["Agent Core Bridge (tools/brain.js)"]
+    CoreBridge -->|"L0 Compact Index"| FindQA["find-qa-context.js"]
+    FindQA -->|"Search (Cosine + FTS)"| DB[("PostgreSQL + pgvector")]
     
-    subgraph "SemanticBrain (Long-Term Memory)"
-    Proxy -->|"1. Trích xuất Context"| RAG("RAG Engine :3457")
-    RAG -->|"Tìm kiếm"| DB[("PostgreSQL + pgvector")]
-    RAG -->|"2. Tiêm RAG và Khuôn Agent"| Proxy
-    end
-
-    Proxy -->|"3. Forward Request"| Ollama("Local LLM / Qwen 3B, Llama3")
-    Ollama -.->|"Stream trả lời"| Proxy
+    Agent -->|"2. L1: Deep View (Selective)"| ViewQA["view-qa.js"]
+    ViewQA -->|"Full Context & History"| DB
     
-    Proxy -->|"4. Auto-Harvest Lọc và Học"| DB
-    Proxy -.->|"Stream trả lời"| IDE
+    Agent -->|"3. Execute & Verify Code"| Workspace["Codebase & Tests"]
+    
+    Agent -->|"4. POST: Harvest Lessons"| PostTask["post-task.js"]
+    PostTask -->|"Quality Guard Filter"| SaveQA["save-qa.js"]
+    SaveQA -->|"Semantic Dedup (>=85%)"| DB
+    
+    Cron(["Periodic Curation"])|"5. Lifecycle Audit"| Curate["curate.js"]
+    Curate -->|"Active -> Stale -> Archived"| DB
 ```
 
-## Stack
+---
 
-| Thành phần | Công nghệ |
-|---|---|
-| Embedding | `@xenova/transformers` + BGE-M3 (1024d, ~570MB, local) |
-| Vector DB | PostgreSQL + pgvector |
-| LLM | Ollama (local) → Gemini/Anthropic (cloud fallback) |
-| Search | Hybrid RRF (cosine + FTS) |
+## ✨ Core Capabilities
 
-## Cài đặt Nhanh với Docker (Khuyên dùng)
+### 1. Progressive 2-Tier Knowledge Retrieval (L0 / L1)
+- **Tier L0 (Compact Index):** `find-qa-context.js` outputs lightweight 1-line signatures (`[ID] Problem (Score, Tags)`) to preserve the agent's context window.
+- **Tier L1 (Selective Deep View):** `view-qa.js <id>` inspects the full resolution root-cause, actionable code fix, and historical revisions only when directly relevant.
 
-Đóng gói toàn bộ hệ thống (DB + Core + Proxy) vào một file duy nhất để làm mờ ranh giới Agent. 
-Bạn không cần cài Node.js hay Postgres trên máy.
+### 2. Harvest Quality Guard & Anti-Hallucination
+- Rejects transient environment noise (VPN drops, expired auth tokens, full disks, missing system packages).
+- Blocks negative tool assertions that induce permanent false refusals.
+- Enforces durable 3-part engineering structure: `<Symptom/Problem> | <Root Cause> | <Solution & Invariants>`.
+- Supports `--pinned` to protect architectural invariants from automated lifecycle decay.
+
+### 3. Semantic Deduplication & Reinforcement ($\ge 85\%$)
+- Compares new knowledge embeddings against existing entries within the same project domain.
+- Instead of creating duplicate records, matches $\ge 85\%$ similarity strengthen hit counts, update guidance, and archive previous answers into `agent_qa_history`.
+
+### 4. Continuous Lifecycle Curation Engine
+- Classifies knowledge into **Active** (fresh or frequently referenced), **Stale** (>60 days unreferenced with $\le 1$ hit), and **Archived**.
+- Audits semantic overlap across records and flags consolidation candidates.
+- Safe `--dry-run` inspection before executing database archive or purge operations.
+
+### 5. Transparent OpenAI Proxy (`:3458`)
+- Simulates an OpenAI-compatible endpoint (`/v1/chat/completions`) wrapped around local LLMs (Ollama, vLLM).
+- Automatically intercepts prompt streams to inject relevant architectural context and harvest validated problem-solution pairs.
+
+---
+
+## 🛠️ Technology Stack
+
+| Component | Technology | Description |
+| :--- | :--- | :--- |
+| **Embedding** | `@xenova/transformers` | BGE-M3 (1024-dimension, local inference, ~570MB) |
+| **Vector Database** | PostgreSQL 16 + `pgvector` | HNSW index for high-speed sub-50ms cosine similarity |
+| **Search Strategy** | Hybrid RRF | Reciprocal Rank Fusion of Cosine Vector Distance and Full-Text Search |
+| **LLM Backend** | Ollama / Cloud Fallback | Local Qwen / Llama models with optional cloud provider failover |
+| **Runtime** | Node.js (ES6+) | Standalone lightweight micro-services and CLI utilities |
+
+---
+
+## 🚀 Quick Start
+
+### Option A: Docker Compose (Recommended)
+
+Run PostgreSQL, pgvector, and all services in isolated containers:
 
 ```bash
-git clone https://github.com/kzxl/LLMSematicBrain.git
-cd LLMSematicBrain
+git clone https://github.com/kzxl/agentic-brain.git
+cd agentic-brain
 
-# Chạy toàn bộ hệ thống
+# Launch vector database and services
 docker compose up -d
 ```
 
-Hệ thống sẽ chạy 2 dịch vụ:
-- **Port 3457**: RAG Engine Core (dùng cho các script chủ động).
-- **Port 3458**: OpenAI Proxy (Cổng giao tiếp ma thuật cho IDE).
+- **Port 3457**: RAG Engine Core API.
+- **Port 3458**: OpenAI-Compatible Proxy (connect your IDE or agent here).
 
-*Lưu ý: Proxy mặc định sẽ kết nối với Ollama chạy ở máy host (qua `host.docker.internal:11434`). Đảm bảo Ollama của bạn đang bật.*
-
-## Cài đặt Thủ công (Manual Setup)
-
-Nếu không dùng Docker:
+### Option B: Local Setup
 
 ```bash
+# 1. Install dependencies
 npm install
-cp .env.example .env
-# Chỉnh sửa file .env với thông tin Postgres của bạn
 
-# Chạy server lõi
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your PostgreSQL credentials
+
+# 3. Initialize database schema
+npm run setup
+
+# 4. Start core service
 npm run start
 
-# Mở một terminal khác, chạy Proxy
+# 5. Start OpenAI proxy (separate terminal)
 npm run proxy
 ```
 
-## OpenAI Proxy (Auto-Harvest & RAG Injector)
+---
 
-`openai-proxy.js` là một máy chủ giả lập chuẩn OpenAI API (`/v1/chat/completions`) bọc quanh Local LLM (VD: Ollama). 
-Chỉ cần cấu hình **Base URL** trong Cursor/Cline thành `http://localhost:3458/v1`, nó sẽ mang lại 3 tính năng:
+## 💻 CLI Tool Reference
 
-1. **RAG Injection:** Tự động bắt câu hỏi, tra cứu DB và nhúng tri thức vào Prompt.
-2. **Auto-Harvest:** Bắt luồng stream trả lời, tự động lọc tạp âm và lưu lại kiến thức kỹ thuật mới vào DB.
-3. **Agent Reinforcement:** Tự động tiêm các luật cực kỳ khắt khe (Khuôn Agent) vào System Prompt để chống bệnh nói lảm nhảm của các mô hình size nhỏ (như `qwen2.5:3b`).
-
-## Dùng chung 1 DB cho nhiều project (Multi-tenant)
-
-Hệ thống hỗ trợ `--project=<tên>` để phân biệt không gian kiến thức.
+All commands support project-level multi-tenancy via `--project=<name>`.
 
 ```bash
-# ERP Project
-node tools/find-qa.js "câu hỏi" --project=erp --tags=ua,inventory
-node tools/save-qa.js "Q" "A" --project=erp --tags=inventory
+# 1. Pre-Fetch: Progressive L0 Index retrieval before task execution
+node tools/find-qa-context.js "Fix database deadlock during inventory sync" --project=erp --tags=inventory
 
-# HelpDesk Project  
-node tools/find-qa.js "câu hỏi" --project=helpdesk --tags=backend
-node tools/save-qa.js "Q" "A" --project=helpdesk --tags=backend,mongodb
+# 2. Inspect: Deep L1 examination of specific QA record
+node tools/view-qa.js 42
+
+# 3. Post-Harvest: Validate and store technical lessons with Quality Guard
+node tools/post-task.js "Deadlock on RefInId | Missing composite index on (DocId, RefInId) | Added composite index and sorted lock acquisitions" --project=erp --tags=inventory,database
+
+# 4. Pin Invariant: Store non-decaying fundamental architectural standard
+node tools/save-qa.js "How to structure WPF controllers?" "Always inherit from BaseForm and use RunAfterShown." --project=erp --tags=csharp,wpf --pinned
+
+# 5. Curation: Audit stale entries and semantic overlap (Dry-Run)
+node tools/curate.js --dry-run
+
+# 6. Archive Stale: Move dormant, low-value records to archive
+node tools/curate.js --archive-stale --days=60
 ```
 
-## CLI Tools (Chế độ Active Agent)
+---
 
-Ngoài việc chạy ngầm qua Proxy, bạn có thể chủ động tra cứu hoặc lưu trữ qua command line:
+## 🔗 Ecosystem Integration
+
+`agentic-brain` is paired with [agentic-core](https://github.com/kzxl/agentic-core). In any client project containing `.project-rule.md`, agents invoke `agentic-brain` directly through the unified bridge:
 
 ```bash
-node tools/find-qa-context.js "<task>" [--project=erp] [--tags=ua] [--limit=8]
-node tools/find-qa-deep.js "<Q>" [--tags=ua]
-node tools/find-skill.js "<intent>"
-node tools/post-task.js "<summary>" [--project=erp] --tags=ua,inventory
-node tools/stats.js
+# SSoT Bridge from agentic-core
+node [AgentOption]/tools/brain.js pre "task description"
+node [AgentOption]/tools/brain.js view 42
+node [AgentOption]/tools/brain.js post "problem | cause | fix"
+node [AgentOption]/tools/brain.js curate --dry-run
 ```
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
