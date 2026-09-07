@@ -7,7 +7,7 @@
  *
  * Usage: node tools/find-qa.js "<question>" [--raw] [--tags=domain:inv,tech:ua]
  */
-const { pool, embed, askLocal, callServer, streamServer, isServerUp, tokenize, qaRankingQuery, normalizeTags } = require('../core');
+const { pool, embed, askLocal, callServer, streamServer, isServerUp, tokenize, qaRankingQuery, normalizeTags, storageAme, config } = require('../core');
 const { execFileSync } = require('child_process');
 const path = require('path');
 
@@ -27,8 +27,35 @@ const TAGS = (() => {
 
 async function findQA(question) {
   if (!question || question.trim().length === 0) {
-    console.log('Usage: node tools/find-qa.js "<Question>" [--raw]');
+    console.log('Usage: node tools/find-qa.js "<Question>" [--raw] [--backend=ame|postgres]');
     process.exit(1);
+  }
+
+  const BACKEND_ARG = process.argv.find(a => a.startsWith('--backend='))?.split('=')[1]?.toLowerCase();
+  const isAmeActive = BACKEND_ARG === 'ame' || config.backend === 'ame';
+
+  if (isAmeActive) {
+    try {
+      const ameResults = await storageAme.queryContext(question, {
+        limit: 3,
+        minSimilarity: 0.15,
+        tags: TAGS,
+        project: PROJECT
+      });
+
+      if (ameResults && ameResults.length > 0) {
+        const top = ameResults[0];
+        console.log(`[QA HIT (⚡ AME)] (score: ${(top.final_score * 100).toFixed(0)}%, conf: ${top.confidence_score})`);
+        console.log(`Q: ${top.question}`);
+        console.log(`A: ${top.answer_context}`);
+        process.exit(0);
+      } else {
+        console.log(`[QA MISS (⚡ AME)] "${question}"`);
+        process.exit(0);
+      }
+    } catch (ameErr) {
+      console.error('[AME ERROR]', ameErr.message);
+    }
   }
 
   // Fast path: try warm server first

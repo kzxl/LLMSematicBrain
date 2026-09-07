@@ -340,10 +340,59 @@ async function saveQA(question, answer, options = {}) {
   throw new Error('Could not persist to AME: both IPC and CLI unavailable');
 }
 
+/**
+ * Views a single Q&A record by its memory ID.
+ */
+async function viewQA(memoryId, options = {}) {
+  const project = options.project || null;
+  const dbPath = resolveProjectDb(project);
+  ensureDbExists(dbPath);
+
+  // 1. Try IPC
+  try {
+    const res = await ipcCall('view', { memoryId }, 1500);
+    if (res && res.payload) {
+      const item = deserializePayload(res.payload, res.memoryId, 1.0);
+      item.tier = res.tier;
+      item.importance = res.importance;
+      item.confidence_score = (res.confidence || 100) / 100;
+      item.hit_count = res.accessFrequency || 1;
+      return item;
+    }
+  } catch {
+    // 2. Fallback CLI
+    const cli = resolveCliPath();
+    if (cli) {
+      try {
+        const out = execFileSync(cli, [
+          'view',
+          dbPath,
+          memoryId.toString(),
+          '--json'
+        ], { encoding: 'utf-8', timeout: 10000 });
+        const res = JSON.parse(out);
+        if (res && res.payload) {
+          const item = deserializePayload(res.payload, res.memoryId, 1.0);
+          item.tier = res.tier;
+          item.importance = res.importance;
+          item.confidence_score = (res.confidence || 100) / 100;
+          item.hit_count = res.accessFrequency || 1;
+          return item;
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
 module.exports = {
   isAmeAvailable,
   queryContext,
   saveQA,
+  viewQA,
   resolveProjectDb,
   ensureDbExists,
   resolveCliPath,
