@@ -199,11 +199,27 @@ async function run() {
   const obsolete = await pool.query(`
     SELECT id, LEFT(question, 50) as question, confidence_score
     FROM agent_qa_cache
-    WHERE (question ILIKE '%c# 6%' OR answer_context ILIKE '%c# 6%'
-       OR question ILIKE '%c#6%' OR answer_context ILIKE '%c#6%'
-       OR question ILIKE '%bindingsource%' OR answer_context ILIKE '%bindingsource%'
-       OR question ILIKE '%copyfromwithlog%' OR answer_context ILIKE '%copyfromwithlog%')
-       AND confidence_score > 0.0
+    WHERE (
+        ((question ILIKE '%c# 6%' OR answer_context ILIKE '%c# 6%' OR question ILIKE '%c#6%' OR answer_context ILIKE '%c#6%')
+         AND answer_context NOT ILIKE '%loại bỏ%' AND answer_context NOT ILIKE '%c# 10%')
+        OR (
+            (question ILIKE '%copyfromwithlog%' OR answer_context ILIKE '%copyfromwithlog%')
+            AND question NOT ILIKE '%instead of%'
+            AND answer_context NOT ILIKE '%instead of%' 
+            AND answer_context NOT ILIKE '%thay vì%'
+            AND answer_context NOT ILIKE '%thay cho%'
+            AND answer_context NOT ILIKE '%loại bỏ%'
+            AND answer_context NOT ILIKE '%tránh%'
+           )
+        OR (
+            (answer_context ILIKE '%sử dụng BindingSource%' OR answer_context ILIKE '%dùng BindingSource%')
+            AND answer_context NOT ILIKE '%loại bỏ%' 
+            AND answer_context NOT ILIKE '%thay thế%' 
+            AND answer_context NOT ILIKE '%gỡ bỏ%'
+            AND answer_context NOT ILIKE '%tránh%'
+           )
+      )
+      AND confidence_score > 0.0
   `);
 
   console.log(`── 7. Obsolete Rules Check ──`);
