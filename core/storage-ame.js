@@ -180,6 +180,29 @@ function serializePayload(qa) {
  * Deserializes an AME payload back into a structured Q&A object.
  */
 function deserializePayload(rawPayload, memoryId, score) {
+  if (!rawPayload) {
+    return { id: memoryId, question: '', answer_context: '', tags: [], project: 'global', final_score: score, max_db_score: score };
+  }
+
+  // 1. Direct JSON (from imported jsonl or raw JSON payloads)
+  try {
+    const directObj = JSON.parse(rawPayload);
+    if (directObj && (directObj.question || directObj.answer_context)) {
+      const projTag = Array.isArray(directObj.tags) ? directObj.tags.find(t => t.startsWith('project:')) : null;
+      return {
+        id: memoryId,
+        question: directObj.question || '',
+        answer_context: directObj.answer_context || '',
+        tags: Array.isArray(directObj.tags) ? directObj.tags : [],
+        project: directObj.project || (projTag ? projTag.replace('project:', '') : 'global'),
+        useful_count: directObj.useful_count || directObj.hit_count || 0,
+        confidence_score: directObj.confidence_score !== undefined ? directObj.confidence_score : 1.0,
+        final_score: score,
+        max_db_score: score
+      };
+    }
+  } catch {}
+
   const jsonMatch = rawPayload.match(/<!-- AME_JSON:(.+?) -->/);
   if (jsonMatch) {
     try {
